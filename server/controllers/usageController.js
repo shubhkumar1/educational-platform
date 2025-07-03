@@ -2,12 +2,12 @@ import Subscription from '../models/Subscription.js';
 import User from '../models/User.js';
 
 export const tickUsage = async (req, res) => {
-    const mockUser = await User.findOne({ email: 'student@example.com' });
-    if (!mockUser) return res.status(401).json({ message: 'User not found.' });
+    const userId = req.user._id;
+    if (!userId) return res.status(401).json({ message: 'User not found.' });
 
     try {
         const updatedSubscription = await Subscription.findOneAndUpdate(
-            { userId: mockUser._id, status: 'free_tier' },
+            { userId: userId, status: 'free_tier' },
             { $inc: { monthlyUsageMinutes: 1 } },
             { new: true }
         );

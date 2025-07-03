@@ -5,9 +5,14 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import { AuthProvider } from './context/AuthContext';
 import App from './App';
 import './index.css';
+import axios from 'axios';
+
+// FIX: Set a global default for axios to include credentials on all requests
+axios.defaults.withCredentials = true;
 
 // IMPORTANT: Replace this with your actual Google Client ID
 const GOOGLE_CLIENT_ID = "374098764347-b079ss2e7uj3ieor7au4brldnu58g318.apps.googleusercontent.com";
+
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

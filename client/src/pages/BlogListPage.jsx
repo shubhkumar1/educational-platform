@@ -45,7 +45,7 @@ const BlogListPage = () => {
             <div key={blog._id} style={{ border: '1px solid #ccc', padding: '1rem', margin: '1rem 0' }}>
               <h3>{blog.title}</h3>
               <p>Category: {blog.category}</p>
-              <Link to={`/blogs/${blog._id}`}>Read More</Link>
+              <Link to={`/blogs/${blog.slug}`}>Read More</Link>
             </div>
           ))
         )}

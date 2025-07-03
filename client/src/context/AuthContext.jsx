@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
@@ -6,35 +6,27 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [sessionId, setSessionId] = useState(null);
-  const [usageDetails, setUsageDetails] = useState(null);
-  const usageInterval = useRef(null);
+  const [loading, setLoading] = useState(true); // Add a loading state
   const navigate = useNavigate();
+  // We no longer need usage tracking or sessionId state here for this step
 
-  const tickUsageApi = async () => {
-    try {
-      const { data } = await axios.post('http://localhost:8080/api/usage/tick');
-      setUsageDetails(data);
-    } catch (error) {
-      console.error('Usage tick failed:', error);
-      if (error.response && error.response.status === 403) {
-        stopUsageTracking();
+  useEffect(() => {
+    const checkUserStatus = async () => {
+      try {
+        // Ask the backend if we have a valid session
+        const { data } = await axios.get('http://localhost:8080/api/auth/status');
+        setUser(data); // If yes, set the user state
+      } catch (error) {
+        // If we get an error (like 401), it means no valid session
+        setUser(null);
+      } finally {
+        // Stop loading once the check is complete
+        setLoading(false);
       }
-    }
-  };
+    };
 
-  const startUsageTracking = () => {
-    if (usageInterval.current) return;
-    console.log("Starting usage tracking...");
-    tickUsageApi();
-    usageInterval.current = setInterval(tickUsageApi, 60000);
-  };
-
-  const stopUsageTracking = () => {
-    console.log("Stopping usage tracking.");
-    clearInterval(usageInterval.current);
-    usageInterval.current = null;
-  };
+    checkUserStatus();
+  }, []);
 
   const login = async (googleToken, deviceId) => {
     try {
@@ -43,18 +35,18 @@ export const AuthProvider = ({ children }) => {
         deviceId,
       });
 
-      const mockUser = { role: 'student', name: 'Test Student' };
-      setUser(mockUser);
-      setSessionId(data.sessionId);
-      
-      const mockSubscription = { status: 'free_tier', usage: 0, limit: 200 };
-      setUsageDetails(mockSubscription);
-      
-      if (mockSubscription.status === 'free_tier') {
-        startUsageTracking();
+      setUser(data); // Set the user data received from the backend
+
+      // --- THIS IS THE FIX ---
+      // Check if the user's profile is complete
+      if (data.profileCompleted) {
+        // If complete, navigate to their role-specific dashboard
+        navigate(`/${data.role}/dashboard`);
+      } else {
+        // If not complete, navigate to the onboarding page to choose a role
+        navigate('/onboarding');
       }
       
-      navigate(`/${mockUser.role}/dashboard`);
     } catch (error) {
       console.error("Login API call failed:", error);
       alert("Login failed. Please try again.");
@@ -62,25 +54,20 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    stopUsageTracking();
     try {
-      await axios.post('http://localhost:8080/api/auth/logout', { sessionId });
+      // Call the backend to clear the cookie
+      await axios.post('http://localhost:8080/api/auth/logout');
+      // Clear the user state and navigate to login
+      setUser(null);
+      navigate('/login');
     } catch (error) {
       console.error("Logout API call failed:", error);
-    } finally {
-      setUser(null);
-      setUsageDetails(null);
-      setSessionId(null);
-      navigate('/login');
     }
   };
 
-  useEffect(() => {
-    return () => stopUsageTracking();
-  }, []);
-
   return (
-    <AuthContext.Provider value={{ user, login, logout, usageDetails }}>
+    // Pass the loading state in the context value
+    <AuthContext.Provider value={{ user, setUser, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

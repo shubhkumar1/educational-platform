@@ -5,14 +5,13 @@ import User from '../models/User.js';
 // @access  Private (should be used after login)
 export const completeProfile = async (req, res) => {
     // In a real app, req.user.id would come from the 'protect' middleware
-    // const userId = req.user.id; 
-    const mockUserId = '60d5f1b2b3b4f8a0b4e9f8a0'; // Using mock user for now
+    const userId = req.user.id; 
 
     // The frontend would send the chosen role and form data
     const { role, fullName, age, interests } = req.body;
 
     try {
-        const user = await User.findById(mockUserId);
+        const user = await User.findById(userId);
 
         if (!user) {
             return res.status(404).json({ message: 'User not found' });

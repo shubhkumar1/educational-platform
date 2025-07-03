@@ -1,28 +1,34 @@
 import express from 'express';
+import {
+    createBlog,
+    getBlogs,
+    getBlogBySlug,
+    getBlogForEdit,
+    updateBlog,
+    deleteBlog
+} from '../controllers/blogController.js';
+import protect from '../middleware/authMiddleware.js';
 import accessControl from '../middleware/accessControlMiddleware.js';
-import { createBlog } from '../controllers/blogController.js'; // <-- ADD THIS IMPORT
 
 const router = express.Router();
 
-// --- Existing Mock Data for Reading ---
-const mockBlogs = [
-    { _id: '1', title: 'First Blog Post', category: 'Tech', author: 'Creator A' },
-    { _id: '2', title: 'Second Blog Post', category: 'Science', author: 'Creator B' }
-];
+// Base route for creating a blog or getting the public list
+router.route('/')
+    .post(protect, createBlog)
+    .get(protect, accessControl, getBlogs);
 
-// --- ROUTES ---
+// Creator-specific route for getting a blog to edit
+router.route('/:id/edit')
+    .get(protect, getBlogForEdit);
 
-// POST a new blog (for creators)
-router.post('/', createBlog); // <-- ADD THIS LINE
+// Creator-specific routes for updating or deleting a blog
+router.route('/:id')
+    .put(protect, updateBlog)
+    .delete(protect, deleteBlog);
 
-// GET all blogs (for students)
-router.get('/', accessControl, (req, res) => res.json(mockBlogs));
-
-// GET a single blog (for students)
-router.get('/:id', accessControl, (req, res) => {
-    const blog = mockBlogs.find(b => b._id === req.params.id);
-    if (blog) res.json(blog);
-    else res.status(404).json({ message: 'Blog not found' });
-});
+// Public-facing route to read a blog using its SEO-friendly slug
+// This is placed last to avoid conflicts with the /:id routes.
+router.route('/:slug')
+    .get(protect, accessControl, getBlogBySlug);
 
 export default router;

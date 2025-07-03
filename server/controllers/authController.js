@@ -1,79 +1,84 @@
 import User from '../models/User.js';
 import Session from '../models/Session.js';
-// We would use a library like 'google-auth-library' to verify the token
-// For now, we will simulate the verification.
+import generateToken from '../utils/generateToken.js';
+import { OAuth2Client } from 'google-auth-library'; // <-- ADD THIS IMPORT
 
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID); // <-- Initialize the client
 const MAX_SESSIONS = 2;
 
-export const googleLogin = async (req, res) => {
+export const googleLogin = async (req, res, next) => {
     const { googleToken, deviceId } = req.body;
 
     try {
-        // --- STEP 1: VERIFY GOOGLE TOKEN (Simulated) ---
-        // In a real app, you would use a library to verify the googleToken and get the user's profile.
-        // const ticket = await client.verifyIdToken({ idToken: googleToken, audience: process.env.GOOGLE_CLIENT_ID });
-        // const payload = ticket.getPayload();
-        // For now, we'll simulate this with mock data.
-        const mockPayload = {
-            sub: '123456789123456789123', // A unique Google ID
-            email: 'newuser@example.com', // Let's use a new email to test
-            name: 'New Test User',
-        };
+        // --- STEP 1: VERIFY REAL GOOGLE TOKEN ---
+        // This replaces the mockPayload. It securely verifies the token with Google.
+        const ticket = await client.verifyIdToken({
+            idToken: googleToken,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
+        const payload = ticket.getPayload();
 
-        // --- STEP 2: FIND OR CREATE USER ---
-        // This is the new logic that handles first-time users.
-        let user = await User.findOne({ googleId: mockPayload.sub });
+        // --- STEP 2: FIND OR CREATE USER WITH REAL DATA ---
+        // We now use the real 'payload' from Google instead of 'mockPayload'.
+        let user = await User.findOne({ googleId: payload.sub });
 
         if (!user) {
-            // If user doesn't exist, create them.
-            // The `profileCompleted` flag will be false by default, as per our schema.
             user = await User.create({
-                googleId: mockPayload.sub,
-                email: mockPayload.email,
-                name: mockPayload.name,
+                googleId: payload.sub,
+                email: payload.email,
+                name: payload.name,
             });
-            console.log('New user created:', user.email);
+            console.log('New user created:', payload.email);
         } else {
-            console.log('Returning user found:', user.email);
+            console.log('Returning user found:', payload.email);
         }
-
-        // --- STEP 3: HANDLE DEVICE SESSION ---
+        
+        // --- STEP 3: SESSION MANAGEMENT (no changes needed here) ---
         const activeSessions = await Session.find({ userId: user._id, isActive: true }).sort({ lastLogin: 'asc' });
-
         if (activeSessions.length >= MAX_SESSIONS) {
             const oldestSession = activeSessions[0];
             await Session.findByIdAndUpdate(oldestSession._id, { isActive: false });
         }
-
-        const newSession = await Session.create({
+        await Session.create({
             userId: user._id,
             deviceId: deviceId,
             ipAddress: req.ip,
             userAgent: req.headers['user-agent'],
         });
 
-        // --- STEP 4: SEND RESPONSE ---
-        // We send back user info, including the important `profileCompleted` flag.
-        // The frontend will use this to decide where to redirect the user.
-        res.status(201).json({
-            message: "Login successful",
-            sessionId: newSession._id,
-            user: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                profileCompleted: user.profileCompleted,
-            },
-            // token: ... we will generate a JWT here later
+        // --- STEP 4: GENERATE TOKEN & SEND RESPONSE (no changes needed here) ---
+        generateToken(res, user._id);
+
+        res.status(200).json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            profileCompleted: user.profileCompleted,
         });
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: "Server error during login." });
+        console.error("Authentication Error:", error);
+        res.status(401).json({ message: "Invalid or expired token. Please log in again." });
     }
 };
 
 export const logout = async (req, res) => {
-    // ... (logout logic remains the same)
+    res.cookie('token', '', {
+        httpOnly: true,
+        expires: new Date(0),
+    });
+    res.status(200).json({ message: "Logout successful." });
+};
+
+export const checkAuthStatus = async (req, res) => {
+    // The 'protect' middleware has already run and attached the user to 'req.user'.
+    // If the middleware passed, it means the user has a valid token.
+    res.status(200).json({
+        _id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role,
+        profileCompleted: req.user.profileCompleted,
+    });
 };

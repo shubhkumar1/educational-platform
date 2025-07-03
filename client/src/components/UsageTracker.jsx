@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 
-const UsageTracker = () => {
+const UsageTracker = React.memo(() => {
     const { usageDetails } = useAuth();
 
     if (!usageDetails || usageDetails.status !== 'free_tier') {
@@ -26,6 +26,6 @@ const UsageTracker = () => {
             )}
         </div>
     );
-};
+});
 
 export default UsageTracker;

@@ -11,6 +11,7 @@ const quizSchema = new mongoose.Schema({
   description: { type: String },
   category: { type: String, required: true },
   questions: [questionSchema],
+  views: { type: Number, default: 0 },
   creatorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 }, { timestamps: true });
 
