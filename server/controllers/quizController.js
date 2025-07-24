@@ -28,7 +28,25 @@ export const createQuiz = async (req, res) => {
 
 export const getQuizzes = async (req, res) => {
     try {
-        const quizzes = await Quiz.find({}).select('title description category');
+        const { category, subCategory, limit } = req.query;
+        let query = {};
+
+        if (category) {
+            query.category = category;
+        }
+        if (subCategory) {
+            query.subCategory = subCategory;
+        }
+
+        let quizzesQuery = Quiz.find(query)
+            .select('title description category')
+            .sort({ createdAt: -1 });
+        
+        if (limit) {
+            quizzesQuery = quizzesQuery.limit(parseInt(limit));
+        }
+
+        const quizzes = await quizzesQuery;
         res.json(quizzes);
     } catch (error) {
         res.status(500).json({ message: 'Server Error' });

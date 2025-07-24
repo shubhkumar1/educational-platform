@@ -1,5 +1,6 @@
 import User from '../models/User.js';
 import Session from '../models/Session.js';
+import Subscription from '../models/Subscription.js';
 import generateToken from '../utils/generateToken.js';
 import { OAuth2Client } from 'google-auth-library'; // <-- ADD THIS IMPORT
 
@@ -7,30 +8,43 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID); // <-- Initialize
 const MAX_SESSIONS = 2;
 
 export const googleLogin = async (req, res, next) => {
-    const { googleToken, deviceId } = req.body;
+    const { googleToken, deviceId, intendedRole } = req.body;
+
+    if (!['student', 'creator', 'admin'].includes(intendedRole)) {
+        return res.status(400).json({ message: 'Invalid role specified.' });
+    }
 
     try {
-        // --- STEP 1: VERIFY REAL GOOGLE TOKEN ---
-        // This replaces the mockPayload. It securely verifies the token with Google.
         const ticket = await client.verifyIdToken({
             idToken: googleToken,
             audience: process.env.GOOGLE_CLIENT_ID,
         });
         const payload = ticket.getPayload();
-
-        // --- STEP 2: FIND OR CREATE USER WITH REAL DATA ---
-        // We now use the real 'payload' from Google instead of 'mockPayload'.
+        
         let user = await User.findOne({ googleId: payload.sub });
 
         if (!user) {
+            // If the user is new, create them with the intended role
             user = await User.create({
                 googleId: payload.sub,
                 email: payload.email,
                 name: payload.name,
+                role: intendedRole, // Set the role based on the login page
+                profileCompleted: false
             });
-            console.log('New user created:', payload.email);
+
+            // --- FIX: Create a default free-tier subscription for the new user ---
+            await Subscription.create({
+                userId: user._id,
+                status: 'free_tier',
+                monthlyUsageMinutes: 0
+            });
+            console.log(`[SERVER] Created default subscription for new user: ${user.email}`);
         } else {
-            console.log('Returning user found:', payload.email);
+            // If the user exists, check if they are logging in through the correct portal
+            if (user.role !== intendedRole) {
+                return res.status(403).json({ message: `This account is registered as a ${user.role}. Please log in through the correct portal.` });
+            }
         }
         
         // --- STEP 3: SESSION MANAGEMENT (no changes needed here) ---
@@ -72,13 +86,20 @@ export const logout = async (req, res) => {
 };
 
 export const checkAuthStatus = async (req, res) => {
-    // The 'protect' middleware has already run and attached the user to 'req.user'.
-    // If the middleware passed, it means the user has a valid token.
-    res.status(200).json({
-        _id: req.user._id,
-        name: req.user.name,
-        email: req.user.email,
-        role: req.user.role,
-        profileCompleted: req.user.profileCompleted,
-    });
+    // The 'protect' middleware should attach the user object to req.user if the token is valid.
+    // We must check if req.user actually exists before trying to access its properties.
+    if (req.user) {
+        // If user is found, they are authenticated.
+        res.status(200).json({
+            _id: req.user._id,
+            name: req.user.name,
+            email: req.user.email,
+            role: req.user.role,
+            profileCompleted: req.user.profileCompleted,
+        });
+    } else {
+        // If req.user is null or undefined, it means the token was invalid, expired, or not provided.
+        // This is an expected case for unauthenticated users.
+        res.status(401).json({ message: 'Not authorized, token failed.' });
+    }
 };

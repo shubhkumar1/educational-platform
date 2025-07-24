@@ -10,7 +10,7 @@ import mongoose from 'mongoose';
 export const createBlog = async (req, res) => {
     const authorId = req.user._id;
     try {
-        const { title, content, category, status, coverImage } = req.body;
+        const { title, content, category, subCategory, status, coverImage } = req.body;
 
         // Generate a URL-friendly slug from the title
         const slug = slugify(title, { lower: true, strict: true });
@@ -21,6 +21,7 @@ export const createBlog = async (req, res) => {
             slug,
             content,
             category,
+            subCategory,
             status,
             coverImage,
             author: authorId
@@ -42,7 +43,31 @@ export const createBlog = async (req, res) => {
  */
 export const getBlogs = async (req, res) => {
     try {
-        const blogs = await Blog.find({ status: 'published' }).populate('author', 'name').sort({ createdAt: -1 });
+        const { category, subCategory, authorRole, limit } = req.query;
+        let query = { status: 'published' };
+
+        if (category) {
+            query.category = category;
+        }
+        if (subCategory) {
+            query.subCategory = subCategory;
+        }
+
+        let blogsQuery = Blog.find(query)
+            .populate('author', 'name role') // Populate author details including role
+            .sort({ createdAt: -1 });
+
+        if (limit) {
+            blogsQuery = blogsQuery.limit(parseInt(limit));
+        }
+
+        let blogs = await blogsQuery;
+
+        // If filtering by author role, we need to do it after populating
+        if (authorRole) {
+            blogs = blogs.filter(blog => blog.author && blog.author.role === authorRole);
+        }
+
         res.json(blogs);
     } catch (error) {
         res.status(500).json({ message: 'Server Error' });
@@ -102,7 +127,7 @@ export const getBlogForEdit = async (req, res) => {
  */
 export const updateBlog = async (req, res) => {
     try {
-        const { title, content, category, status, coverImage } = req.body; // <-- include coverImage
+        const { title, content, category, subCategory, status, coverImage } = req.body; // <-- include coverImage
         const blog = await Blog.findById(req.params.id);
 
         if (!blog) return res.status(404).json({ message: 'Blog not found' });
@@ -113,6 +138,7 @@ export const updateBlog = async (req, res) => {
         blog.title = title || blog.title;
         blog.content = content || blog.content;
         blog.category = category || blog.category;
+        blog.subCategory = subCategory;
         blog.status = status || blog.status;
         if (coverImage) {
             blog.coverImage = coverImage; // <-- update coverImage if provided
@@ -146,6 +172,75 @@ export const deleteBlog = async (req, res) => {
 
         await blog.deleteOne();
         res.json({ message: 'Blog removed' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Like or unlike a blog post
+export const likeBlog = async (req, res) => {
+    try {
+        const blog = await Blog.findById(req.params.id);
+        if (!blog) return res.status(404).json({ message: 'Blog not found' });
+
+        const userId = req.user._id.toString();
+        blog.dislikes = blog.dislikes.filter(id => id.toString() !== userId);
+        const hasLiked = blog.likes.includes(userId);
+
+        if (hasLiked) {
+            blog.likes = blog.likes.filter(id => id.toString() !== userId);
+        } else {
+            blog.likes.push(userId);
+        }
+
+        await blog.save();
+        res.json({ likes: blog.likes.length, dislikes: blog.dislikes.length });
+    } catch (error) {
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Dislike or un-dislike a blog post
+export const dislikeBlog = async (req, res) => {
+    try {
+        const blog = await Blog.findById(req.params.id);
+        if (!blog) return res.status(404).json({ message: 'Blog not found' });
+
+        const userId = req.user._id.toString();
+        blog.likes = blog.likes.filter(id => id.toString() !== userId);
+        const hasDisliked = blog.dislikes.includes(userId);
+
+        if (hasDisliked) {
+            blog.dislikes = blog.dislikes.filter(id => id.toString() !== userId);
+        } else {
+            blog.dislikes.push(userId);
+        }
+
+        await blog.save();
+        res.json({ likes: blog.likes.length, dislikes: blog.dislikes.length });
+    } catch (error) {
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Report a blog post
+export const reportBlog = async (req, res) => {
+    try {
+        const { reason } = req.body;
+        if (!reason) return res.status(400).json({ message: 'A reason is required to report content.' });
+        
+        const blog = await Blog.findById(req.params.id);
+        if (!blog) return res.status(404).json({ message: 'Blog not found' });
+
+        const alreadyReported = blog.reports.some(report => report.userId.toString() === req.user._id.toString());
+        if (alreadyReported) {
+            return res.status(400).json({ message: 'You have already reported this content.' });
+        }
+
+        blog.reports.push({ userId: req.user._id, reason });
+        await blog.save();
+
+        res.json({ message: 'Content reported successfully. Our team will review it.' });
     } catch (error) {
         res.status(500).json({ message: 'Server Error' });
     }

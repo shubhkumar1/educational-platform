@@ -5,7 +5,10 @@ import {
     getBlogBySlug,
     getBlogForEdit,
     updateBlog,
-    deleteBlog
+    deleteBlog,
+    likeBlog,
+    dislikeBlog,
+    reportBlog
 } from '../controllers/blogController.js';
 import protect from '../middleware/authMiddleware.js';
 import accessControl from '../middleware/accessControlMiddleware.js';
@@ -30,5 +33,10 @@ router.route('/:id')
 // This is placed last to avoid conflicts with the /:id routes.
 router.route('/:slug')
     .get(protect, accessControl, getBlogBySlug);
+
+
+router.route('/:id/like').post(protect, likeBlog);
+router.route('/:id/dislike').post(protect, dislikeBlog);
+router.route('/:id/report').post(protect, reportBlog);
 
 export default router;

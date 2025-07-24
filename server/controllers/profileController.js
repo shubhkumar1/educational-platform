@@ -8,7 +8,7 @@ export const completeProfile = async (req, res) => {
     const userId = req.user.id; 
 
     // The frontend would send the chosen role and form data
-    const { role, fullName, age, interests } = req.body;
+    const { name, age, city, college, department, honoursPaper } = req.body;
 
     try {
         const user = await User.findById(userId);
@@ -17,29 +17,25 @@ export const completeProfile = async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Update user document with profile data
-        user.name = fullName || user.name;
-        user.role = role || user.role;
-        // ... (update other fields like age, interests, etc.)
-        
-        // This flag is important to prevent users from seeing the form again
-        user.profileCompleted = true;
+        // FIX: Update the user document with all the new details
+        user.name = name || user.name;
+        user.age = age || user.age;
+        user.city = city || user.city;
+        user.college = college || user.college;
+        user.department = department || user.department;
+        user.honoursPaper = honoursPaper || user.honoursPaper;
+        user.profileCompleted = true; // Mark profile as complete
 
-        await user.save();
+        const updatedUser = await user.save();
 
         res.status(200).json({
-            message: 'Profile completed successfully.',
-            user: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                profileCompleted: user.profileCompleted,
-            }
+            _id: updatedUser._id,
+            name: updatedUser.name,
+            email: updatedUser.email,
+            role: updatedUser.role,
+            profileCompleted: updatedUser.profileCompleted,
         });
-
     } catch (error) {
-        console.error(error);
         res.status(500).json({ message: 'Server Error' });
     }
 };

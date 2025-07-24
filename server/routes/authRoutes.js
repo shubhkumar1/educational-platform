@@ -6,4 +6,5 @@ const router = express.Router();
 router.post('/google', googleLogin);
 router.post('/logout', logout);
 router.get('/status', protect, checkAuthStatus); 
+
 export default router;

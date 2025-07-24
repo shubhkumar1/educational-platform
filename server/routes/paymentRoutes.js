@@ -1,9 +1,10 @@
 import express from 'express';
-import { createPaymentOrder, paymentCallback } from '../controllers/paymentController.js';
+import { createPaymentOrder, checkPaymentStatus } from '../controllers/paymentController.js';
+import protect from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.post('/create-order', createPaymentOrder);
-router.post('/callback', paymentCallback);
+router.post('/create-order', protect, createPaymentOrder);
+router.post('/status', protect, checkPaymentStatus);
 
 export default router;

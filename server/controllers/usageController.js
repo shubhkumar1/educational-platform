@@ -1,25 +1,27 @@
 import Subscription from '../models/Subscription.js';
-import User from '../models/User.js';
 
+/**
+ * @desc    Increment usage minutes for a free-tier user
+ * @route   POST /api/usage/tick
+ * @access  Private (Student)
+ */
 export const tickUsage = async (req, res) => {
-    const userId = req.user._id;
-    if (!userId) return res.status(401).json({ message: 'User not found.' });
-
     try {
+        // Find the subscription for the logged-in user and increment their usage
         const updatedSubscription = await Subscription.findOneAndUpdate(
-            { userId: userId, status: 'free_tier' },
+            { userId: req.user._id, status: 'free_tier' },
             { $inc: { monthlyUsageMinutes: 1 } },
-            { new: true }
+            { new: true } // Return the updated document
         );
 
         if (updatedSubscription) {
             res.json({
                 usage: updatedSubscription.monthlyUsageMinutes,
-                limit: 200,
-                status: updatedSubscription.status
+                limit: 100,
             });
         } else {
-            res.json({ message: 'Usage tracking not applicable for this subscription type.' });
+            // This will be the case for subscribed users, for whom we don't track usage
+            res.json({ message: 'Usage tracking not applicable for this user.' });
         }
     } catch (error) {
         res.status(500).json({ message: 'Server error while updating usage.' });

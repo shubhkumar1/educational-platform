@@ -1,66 +1,83 @@
-import Paytm from 'paytm-pg-node-sdk'; // Assumes this is the SDK import
-import { v4 as uuidv4 } from 'uuid'; // Use UUID for unique order IDs
+import { Cashfree } from 'cashfree-pg';
+import { v4 as uuidv4 } from 'uuid';
 import Transaction from '../models/Transaction.js';
+import User from '../models/User.js';
 
-// @desc    Create a payment order and get transaction token
-// @route   POST /api/payment/create-order
+// Initialize Cashfree
+Cashfree.XClientId = process.env.CASHFREE_APP_ID;
+Cashfree.XClientSecret = process.env.CASHFREE_SECRET_KEY;
+Cashfree.XEnvironment = "sandbox"; // Use SANDBOX for testing
+
+/**
+ * @desc    Create a Cashfree payment session
+ * @route   POST /api/payment/create-order
+ */
 export const createPaymentOrder = async (req, res) => {
-    // const userId = req.user.id;
-    const mockUserId = '60d5f1b2b3b4f8a0b4e9f8a0';
+    const userId = req.user._id;
+    const user = await User.findById(userId);
 
     try {
         const { amount } = req.body;
         const orderId = `ORDER_${uuidv4()}`;
 
-        // Create a transaction record in our database with 'Pending' status
-        await Transaction.create({
-            userId: mockUserId,
-            orderId: orderId,
-            amount: amount,
-        });
-
-        const paytmParams = {};
-        paytmParams.body = {
-            "requestType": "Payment",
-            "mid": process.env.PAYTM_MERCHANT_ID,
-            "websiteName": process.env.PAYTM_WEBSITE,
-            "orderId": orderId,
-            "callbackUrl": `${process.env.PAYTM_CALLBACK_URL}?orderId=${orderId}`,
-            "txnAmount": {
-                "value": amount.toFixed(2),
-                "currency": "INR",
+        const request = {
+            order_amount: amount,
+            order_currency: "INR",
+            order_id: orderId,
+            customer_details: {
+                customer_id: userId.toString(),
+                customer_email: user.email,
+                customer_phone: "9999999999", // A placeholder phone number
             },
-            "userInfo": {
-                "custId": mockUserId,
-            },
+            order_meta: {
+                return_url: `http://localhost:5173/order/status?order_id={order_id}`,
+            }
         };
 
-        // This is a conceptual use of the SDK. The actual implementation may vary.
-        const checksum = await Paytm.generateSignature(JSON.stringify(paytmParams.body), process.env.PAYTM_MERCHANT_KEY);
-        paytmParams.head = { "signature": checksum };
-
-        // Send the necessary details to the frontend to initiate the transaction
-        res.json({
+        const response = await Cashfree.PGCreateOrder("2022-09-01", request);
+        
+        // Create a transaction record in our database
+        await Transaction.create({
+            userId: userId,
             orderId: orderId,
             amount: amount,
-            txnToken: checksum, // In a real SDK, a transaction token would be generated here
-            merchantId: process.env.PAYTM_MERCHANT_ID
+            status: 'Pending',
         });
 
+        // Send the session ID to the frontend
+        res.json(response.data);
+
     } catch (error) {
-        console.error('Payment Error:', error);
+        console.error('Cashfree Error:', error.response.data);
         res.status(500).json({ message: 'Failed to create payment order.' });
     }
 };
 
-// @desc    Handle the callback from Paytm after payment attempt
-// @route   POST /api/payment/callback
-export const paymentCallback = async (req, res) => {
-    // This is where "Payment verification" happens.
-    // The request body from Paytm contains payment details and a signature.
-    // We would verify this signature using the Paytm SDK to confirm the transaction is legitimate.
-    // If verified, we update our Transaction record status to 'Success' or 'Failed'.
-    
-    console.log("Paytm Callback Received:", req.body);
-    res.send("Callback handled. In production, this would redirect to a success/failure page.");
+/**
+ * @desc    Check the status of a payment after completion
+ * @route   POST /api/payment/status
+ */
+export const checkPaymentStatus = async (req, res) => {
+    try {
+        const { orderId } = req.body;
+        const response = await Cashfree.PGOrderFetchPayments("2022-09-01", orderId);
+
+        const payment = response.data[0];
+
+        if (payment.payment_status === "SUCCESS") {
+            await Transaction.findOneAndUpdate({ orderId }, {
+                status: 'Success',
+                transactionId: payment.cf_payment_id
+            });
+            // Here you would also update the user's subscription status in your database
+        } else {
+            await Transaction.findOneAndUpdate({ orderId }, { status: 'Failed' });
+        }
+
+        res.json({ status: payment.payment_status });
+
+    } catch (error) {
+        console.error('Cashfree Status Check Error:', error);
+        res.status(500).json({ message: 'Failed to verify payment status.' });
+    }
 };
