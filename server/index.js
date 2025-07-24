@@ -69,8 +69,8 @@ app.use(limiter);
 
 // Enable CORS
 app.use(cors({
-    // origin: 'http://localhost:5173', // Your client's origin
-    origin: 'https://genzbro.netlify.app', // Your client's origin
+    origin: 'http://localhost:5173', // Your client's origin
+    // origin: 'https://genzbro.netlify.app', // Your client's origin
     credentials: true,
     optionsSuccessStatus: 200 
 }));
